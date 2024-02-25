@@ -494,7 +494,7 @@ func (kl *Kubelet) GenerateRunContainerOptions(ctx context.Context, pod *v1.Pod,
 	}
 	opts.Devices = append(opts.Devices, blkVolumes...)
 
-	envs, err := kl.makeEnvironmentVariables(pod, container, podIP, podIPs)
+	envs, err := kl.makeEnvironmentVariables(pod, container, podIP, podIPs, volumes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -576,7 +576,7 @@ func (kl *Kubelet) getServiceEnvVarMap(ns string, enableServiceLinks bool) (map[
 }
 
 // Make the environment variables for a pod in the given namespace.
-func (kl *Kubelet) makeEnvironmentVariables(pod *v1.Pod, container *v1.Container, podIP string, podIPs []string) ([]kubecontainer.EnvVar, error) {
+func (kl *Kubelet) makeEnvironmentVariables(pod *v1.Pod, container *v1.Container, podIP string, podIPs []string, podVolumes kubecontainer.VolumeMap) ([]kubecontainer.EnvVar, error) {
 	if pod.Spec.EnableServiceLinks == nil {
 		return nil, fmt.Errorf("nil pod.spec.enableServiceLinks encountered, cannot construct envvars")
 	}
@@ -688,6 +688,20 @@ func (kl *Kubelet) makeEnvironmentVariables(pod *v1.Pod, container *v1.Container
 				sort.Strings(invalidKeys)
 				kl.recorder.Eventf(pod, v1.EventTypeWarning, "InvalidEnvironmentVariableNames", "Keys [%s] from the EnvFrom secret %s/%s were skipped since they are considered invalid environment variable names.", strings.Join(invalidKeys, ", "), pod.Namespace, name)
 			}
+		case envFrom.FileRef != nil:
+			if !utilfeature.DefaultFeatureGate.Enabled(features.EnvFiles) {
+				continue
+			}
+			s := envFrom.FileRef
+			filePath, exists, err := findEnvFileHostPath(pod, container, podVolumes, kl.hostutil, s.Path)
+			if err != nil {
+				// error
+			}
+			optional := s.Optional != nil && *s.Optional
+			if !exists && optional {
+				// error
+			}
+			
 		}
 	}
 
@@ -2327,4 +2341,31 @@ func (kl *Kubelet) cleanupOrphanedPodCgroups(pcm cm.PodContainerManager, cgroupP
 		// again try to delete these unwanted pod cgroups
 		go pcm.Destroy(val)
 	}
+}
+
+func findEnvFileHostPath(pod *v1.Pod, container *v1.Container, podVolumes kubecontainer.VolumeMap, hu hostutil.HostUtils, envfileContainerPath string) (string, bool, error) {
+	for _, mount := range container.VolumeMounts {
+		if !strings.HasPrefix(envfileContainerPath, mount.MountPath) {
+			continue
+		}
+
+		relativePath, _ := strings.CutPrefix(envfileContainerPath, mount.MountPath)
+
+		vol, ok := podVolumes[mount.Name]
+		if !ok || vol.Mounter == nil {
+			klog.ErrorS(nil, "Mount cannot be satisfied for the container, because the volume is missing or the volume mounter (vol.Mounter) is nil",
+				"containerName", container.Name, "ok", ok, "volumeMounter", mount)
+			return "", false, fmt.Errorf("cannot find volume %q to mount into container %q", mount.Name, container.Name)
+		}
+		hostPath, err := volumeutil.GetPath(vol.Mounter)
+		if err != nil {
+			return "", false, err
+		}
+
+		envFileHostPath := filepath.Join(hostPath, relativePath)
+		exists, err := hu.PathExists(envFileHostPath)
+		return envFileHostPath, exists, err
+	}
+
+	return "", false, fmt.Errorf("file %q not found", envfileContainerPath)
 }
