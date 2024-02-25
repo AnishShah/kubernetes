@@ -24,6 +24,7 @@ type EnvFromSourceApplyConfiguration struct {
 	Prefix       *string                               `json:"prefix,omitempty"`
 	ConfigMapRef *ConfigMapEnvSourceApplyConfiguration `json:"configMapRef,omitempty"`
 	SecretRef    *SecretEnvSourceApplyConfiguration    `json:"secretRef,omitempty"`
+	FileRef      *FileEnvSourceApplyConfiguration      `json:"fileRef,omitempty"`
 }
 
 // EnvFromSourceApplyConfiguration constructs an declarative configuration of the EnvFromSource type for use with
@@ -53,5 +54,13 @@ func (b *EnvFromSourceApplyConfiguration) WithConfigMapRef(value *ConfigMapEnvSo
 // If called multiple times, the SecretRef field is set to the value of the last call.
 func (b *EnvFromSourceApplyConfiguration) WithSecretRef(value *SecretEnvSourceApplyConfiguration) *EnvFromSourceApplyConfiguration {
 	b.SecretRef = value
+	return b
+}
+
+// WithFileRef sets the FileRef field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the FileRef field is set to the value of the last call.
+func (b *EnvFromSourceApplyConfiguration) WithFileRef(value *FileEnvSourceApplyConfiguration) *EnvFromSourceApplyConfiguration {
+	b.FileRef = value
 	return b
 }

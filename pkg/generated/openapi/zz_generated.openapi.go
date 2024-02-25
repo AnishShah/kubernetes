@@ -419,6 +419,8 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"k8s.io/api/core/v1.EventSource":                                                                        schema_k8sio_api_core_v1_EventSource(ref),
 		"k8s.io/api/core/v1.ExecAction":                                                                         schema_k8sio_api_core_v1_ExecAction(ref),
 		"k8s.io/api/core/v1.FCVolumeSource":                                                                     schema_k8sio_api_core_v1_FCVolumeSource(ref),
+		"k8s.io/api/core/v1.FileEnvSource":                                                                      schema_k8sio_api_core_v1_FileEnvSource(ref),
+		"k8s.io/api/core/v1.FileKeySelector":                                                                    schema_k8sio_api_core_v1_FileKeySelector(ref),
 		"k8s.io/api/core/v1.FlexPersistentVolumeSource":                                                         schema_k8sio_api_core_v1_FlexPersistentVolumeSource(ref),
 		"k8s.io/api/core/v1.FlexVolumeSource":                                                                   schema_k8sio_api_core_v1_FlexVolumeSource(ref),
 		"k8s.io/api/core/v1.FlockerVolumeSource":                                                                schema_k8sio_api_core_v1_FlockerVolumeSource(ref),
@@ -20393,11 +20395,17 @@ func schema_k8sio_api_core_v1_EnvFromSource(ref common.ReferenceCallback) common
 							Ref:         ref("k8s.io/api/core/v1.SecretEnvSource"),
 						},
 					},
+					"fileRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The file to select from",
+							Ref:         ref("k8s.io/api/core/v1.FileEnvSource"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"k8s.io/api/core/v1.ConfigMapEnvSource", "k8s.io/api/core/v1.SecretEnvSource"},
+			"k8s.io/api/core/v1.ConfigMapEnvSource", "k8s.io/api/core/v1.FileEnvSource", "k8s.io/api/core/v1.SecretEnvSource"},
 	}
 }
 
@@ -20469,11 +20477,17 @@ func schema_k8sio_api_core_v1_EnvVarSource(ref common.ReferenceCallback) common.
 							Ref:         ref("k8s.io/api/core/v1.SecretKeySelector"),
 						},
 					},
+					"fileKeyRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Selects a key of the env file.",
+							Ref:         ref("k8s.io/api/core/v1.FileKeySelector"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"k8s.io/api/core/v1.ConfigMapKeySelector", "k8s.io/api/core/v1.ObjectFieldSelector", "k8s.io/api/core/v1.ResourceFieldSelector", "k8s.io/api/core/v1.SecretKeySelector"},
+			"k8s.io/api/core/v1.ConfigMapKeySelector", "k8s.io/api/core/v1.FileKeySelector", "k8s.io/api/core/v1.ObjectFieldSelector", "k8s.io/api/core/v1.ResourceFieldSelector", "k8s.io/api/core/v1.SecretKeySelector"},
 	}
 }
 
@@ -21446,6 +21460,60 @@ func schema_k8sio_api_core_v1_FCVolumeSource(ref common.ReferenceCallback) commo
 							},
 						},
 					},
+				},
+			},
+		},
+	}
+}
+
+func schema_k8sio_api_core_v1_FileEnvSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "FileEnvSource selects a file from container filesystem to populate the environment variables with.\n\nThe contents of the target file will represent the key-value pairs as environment variables.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"optional": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Specify whether the file must exist.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_k8sio_api_core_v1_FileKeySelector(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "FileKeySelector selects a key of the env file.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"key": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The key of the env file to select from.  Must be a valid key.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"optional": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Specify whether the file or its key must be defined",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"key"},
+			},
+			VendorExtensible: spec.VendorExtensible{
+				Extensions: spec.Extensions{
+					"x-kubernetes-map-type": "atomic",
 				},
 			},
 		},

@@ -2103,6 +2103,9 @@ type EnvVarSource struct {
 	// Selects a key of a secret in the pod's namespace.
 	// +optional
 	SecretKeyRef *SecretKeySelector
+	// Selects a key of the env file.
+	// +optional
+	FileKeyRef *FileKeySelector
 }
 
 // ObjectFieldSelector selects an APIVersioned field of an object.
@@ -2149,6 +2152,17 @@ type SecretKeySelector struct {
 	Optional *bool
 }
 
+// FileKeySelector selects a key of the env file.
+type FileKeySelector struct {
+	// The file path to select from.
+	Path string
+	// The key of the env file to select from.  Must be a valid key.
+	Key string
+	// Specify whether the file or its key must be defined
+	// +optional
+	Optional *bool
+}
+
 // EnvFromSource represents the source of a set of ConfigMaps
 type EnvFromSource struct {
 	// An optional identifier to prepend to each key in the ConfigMap.
@@ -2160,6 +2174,9 @@ type EnvFromSource struct {
 	// The Secret to select from.
 	// +optional
 	SecretRef *SecretEnvSource
+	// The file to select from
+	// +optional
+	FileRef *FileEnvSource
 }
 
 // ConfigMapEnvSource selects a ConfigMap to populate the environment
@@ -2184,6 +2201,19 @@ type SecretEnvSource struct {
 	// The Secret to select from.
 	LocalObjectReference
 	// Specify whether the Secret must be defined
+	// +optional
+	Optional *bool
+}
+
+// FileEnvSource selects a file from container filesystem to populate the
+// environment variables with.
+//
+// The contents of the target file will represent the key-value pairs
+// as environment variables.
+type FileEnvSource struct {
+	// The file path to select from.
+	Path string
+	// Specify whether the file must exist.
 	// +optional
 	Optional *bool
 }

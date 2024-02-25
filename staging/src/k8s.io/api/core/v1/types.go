@@ -2250,6 +2250,9 @@ type EnvVarSource struct {
 	// Selects a key of a secret in the pod's namespace
 	// +optional
 	SecretKeyRef *SecretKeySelector `json:"secretKeyRef,omitempty" protobuf:"bytes,4,opt,name=secretKeyRef"`
+	// Selects a key of the env file.
+	// +optional
+	FileKeyRef *FileKeySelector `json:"fileKeyRef,omitempty" protobuf:"bytes,5,opt,name=fileKeyRef"`
 }
 
 // ObjectFieldSelector selects an APIVersioned field of an object.
@@ -2299,6 +2302,18 @@ type SecretKeySelector struct {
 	Optional *bool `json:"optional,omitempty" protobuf:"varint,3,opt,name=optional"`
 }
 
+// FileKeySelector selects a key of the env file.
+// +structType=atomic
+type FileKeySelector struct {
+	// The file path to select from.
+	Path string `json:",inline" protobuf:"bytes,1,opt,name=path"`
+	// The key of the env file to select from.  Must be a valid key.
+	Key string `json:"key" protobuf:"bytes,2,opt,name=key"`
+	// Specify whether the file or its key must be defined
+	// +optional
+	Optional *bool `json:"optional,omitempty" protobuf:"varint,3,opt,name=optional"`
+}
+
 // EnvFromSource represents the source of a set of ConfigMaps
 type EnvFromSource struct {
 	// An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
@@ -2310,6 +2325,9 @@ type EnvFromSource struct {
 	// The Secret to select from
 	// +optional
 	SecretRef *SecretEnvSource `json:"secretRef,omitempty" protobuf:"bytes,3,opt,name=secretRef"`
+	// The file to select from
+	// +optional
+	FileRef *FileEnvSource `json:"fileRef,omitempty" protobuf:"bytes,4,opt,name=fileRef"`
 }
 
 // ConfigMapEnvSource selects a ConfigMap to populate the environment
@@ -2334,6 +2352,19 @@ type SecretEnvSource struct {
 	// The Secret to select from.
 	LocalObjectReference `json:",inline" protobuf:"bytes,1,opt,name=localObjectReference"`
 	// Specify whether the Secret must be defined
+	// +optional
+	Optional *bool `json:"optional,omitempty" protobuf:"varint,2,opt,name=optional"`
+}
+
+// FileEnvSource selects a file from container filesystem to populate the
+// environment variables with.
+//
+// The contents of the target file will represent the key-value pairs
+// as environment variables.
+type FileEnvSource struct {
+	// The file path to select from.
+	Path string `json:",inline" protobuf:"bytes,1,opt,name=path"`
+	// Specify whether the file must exist.
 	// +optional
 	Optional *bool `json:"optional,omitempty" protobuf:"varint,2,opt,name=optional"`
 }

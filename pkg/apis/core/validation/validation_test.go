@@ -6088,6 +6088,14 @@ func TestValidateEnv(t *testing.T) {
 					Key: "some-key",
 				},
 			},
+		}, {
+			Name: "ENV_VAR_1",
+			ValueFrom: &core.EnvVarSource{
+				FileKeyRef: &core.FileKeySelector{
+					Path: "/dev/test.env",
+					Key: "some-key",
+				},
+			},
 		},
 	}
 	if errs := ValidateEnv(successCase, field.NewPath("field"), PodValidationOptions{}); len(errs) != 0 {
@@ -6137,7 +6145,7 @@ func TestValidateEnv(t *testing.T) {
 			Name:      "abc",
 			ValueFrom: &core.EnvVarSource{},
 		}},
-		expectedError: "[0].valueFrom: Invalid value: \"\": must specify one of: `fieldRef`, `resourceFieldRef`, `configMapKeyRef` or `secretKeyRef`",
+		expectedError: "[0].valueFrom: Invalid value: \"\": must specify one of: `fieldRef`, `resourceFieldRef`, `configMapKeyRef`, `secretKeyRef` or `fileKeyRef`",
 	}, {
 		name: "valueFrom.fieldRef and valueFrom.secretKeyRef specified",
 		envs: []core.EnvVar{{
@@ -6330,6 +6338,17 @@ func TestValidateEnv(t *testing.T) {
 			},
 		}},
 		expectedError: `valueFrom.fieldRef.fieldPath: Unsupported value: "status.phase": supported values: "metadata.name", "metadata.namespace", "metadata.uid", "spec.nodeName", "spec.serviceAccountName", "status.hostIP", "status.hostIPs", "status.podIP", "status.podIPs"`,
+	}, {
+		name: "valueFrom.fileKeyRef.path invalid",
+		envs: []core.EnvVar{{
+			Name: "abc",
+			ValueFrom: &core.EnvVarSource{
+				FileKeyRef: &core.FileKeySelector{
+					Path: "relative.env",
+					Key: "a-key",
+				},
+			},
+		}},
 	},
 	}
 	for _, tc := range errorCases {
@@ -6374,6 +6393,20 @@ func TestValidateEnvFrom(t *testing.T) {
 		Prefix: "a.b",
 		SecretRef: &core.SecretEnvSource{
 			LocalObjectReference: core.LocalObjectReference{Name: "abc"},
+		},
+	}, {
+		FileRef: &core.FileEnvSource{
+			Path: "/dev/test.env",
+		},
+	}, {
+		Prefix: "C_",
+		FileRef: &core.FileEnvSource{
+			Path: "/dev/test.env",
+		},
+	}, {
+		Prefix: "a.b",
+		FileRef: &core.FileEnvSource{
+			Path: "/dev/test.env",
 		},
 	},
 	}
@@ -6434,9 +6467,9 @@ func TestValidateEnvFrom(t *testing.T) {
 		envs: []core.EnvFromSource{
 			{},
 		},
-		expectedError: "field: Invalid value: \"\": must specify one of: `configMapRef` or `secretRef`",
+		expectedError: "field: Invalid value: \"\": must specify one of: `configMapRef`, `secretRef` or `fileRef`",
 	}, {
-		name: "multiple refs",
+		name: "multiple refs - secret and configmap",
 		envs: []core.EnvFromSource{{
 			SecretRef: &core.SecretEnvSource{
 				LocalObjectReference: core.LocalObjectReference{Name: "abc"}},
@@ -6445,6 +6478,15 @@ func TestValidateEnvFrom(t *testing.T) {
 		}},
 		expectedError: "field: Invalid value: \"\": may not have more than one field specified at a time",
 	}, {
+                name: "multiple refs - secret and file",
+                envs: []core.EnvFromSource{{
+                        SecretRef: &core.SecretEnvSource{
+                                LocalObjectReference: core.LocalObjectReference{Name: "abc"}},
+                        FileRef: &core.FileEnvSource{
+                                Path: "/dev/test.env"},
+                }},
+                expectedError: "field: Invalid value: \"\": may not have more than one field specified at a time",
+        }, {
 		name: "invalid secret ref name",
 		envs: []core.EnvFromSource{{
 			SecretRef: &core.SecretEnvSource{
@@ -6458,6 +6500,20 @@ func TestValidateEnvFrom(t *testing.T) {
 				LocalObjectReference: core.LocalObjectReference{Name: "$%^&*#"}},
 		}},
 		expectedError: "field[0].configMapRef.name: Invalid value: \"$%^&*#\": " + dnsSubdomainLabelErrMsg,
+	}, {
+		name: "zero-length file path",
+		envs: []core.EnvFromSource{{
+			FileRef: &core.FileEnvSource{
+				Path: ""},
+		}},
+		expectedError: "field[0].fileRef.path: Required value",
+	}, {
+		name: "relative file path",
+		envs: []core.EnvFromSource{{
+			FileRef: &core.FileEnvSource{
+				Path: "test.env"},
+		}},
+		expectedError: "field[0].fileRef.path: Invalid value: \"test.env\": must be an absolute path",
 	},
 	}
 	for _, tc := range errorCases {

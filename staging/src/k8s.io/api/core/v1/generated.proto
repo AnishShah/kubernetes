@@ -1310,6 +1310,10 @@ message EnvFromSource {
   // The Secret to select from
   // +optional
   optional SecretEnvSource secretRef = 3;
+
+  // The file to select from
+  // +optional
+  optional FileEnvSource fileRef = 4;
 }
 
 // EnvVar represents an environment variable present in a Container.
@@ -1353,6 +1357,10 @@ message EnvVarSource {
   // Selects a key of a secret in the pod's namespace
   // +optional
   optional SecretKeySelector secretKeyRef = 4;
+
+  // Selects a key of the env file.
+  // +optional
+  optional FileKeySelector fileKeyRef = 5;
 }
 
 // An EphemeralContainer is a temporary container that you may add to an existing Pod for
@@ -1729,6 +1737,34 @@ message FCVolumeSource {
   // +optional
   // +listType=atomic
   repeated string wwids = 5;
+}
+
+// FileEnvSource selects a file from container filesystem to populate the
+// environment variables with.
+//
+// The contents of the target file will represent the key-value pairs
+// as environment variables.
+message FileEnvSource {
+  // The file path to select from.
+  optional string path = 1;
+
+  // Specify whether the file must exist.
+  // +optional
+  optional bool optional = 2;
+}
+
+// FileKeySelector selects a key of the env file.
+// +structType=atomic
+message FileKeySelector {
+  // The file path to select from.
+  optional string path = 1;
+
+  // The key of the env file to select from.  Must be a valid key.
+  optional string key = 2;
+
+  // Specify whether the file or its key must be defined
+  // +optional
+  optional bool optional = 3;
 }
 
 // FlexPersistentVolumeSource represents a generic persistent volume resource that is

@@ -587,6 +587,7 @@ var map_EnvFromSource = map[string]string{
 	"prefix":       "An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.",
 	"configMapRef": "The ConfigMap to select from",
 	"secretRef":    "The Secret to select from",
+	"fileRef":      "The file to select from",
 }
 
 func (EnvFromSource) SwaggerDoc() map[string]string {
@@ -610,6 +611,7 @@ var map_EnvVarSource = map[string]string{
 	"resourceFieldRef": "Selects a resource of the container: only resources limits and requests (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.",
 	"configMapKeyRef":  "Selects a key of a ConfigMap.",
 	"secretKeyRef":     "Selects a key of a secret in the pod's namespace",
+	"fileKeyRef":       "Selects a key of the env file.",
 }
 
 func (EnvVarSource) SwaggerDoc() map[string]string {
@@ -739,6 +741,25 @@ var map_FCVolumeSource = map[string]string{
 
 func (FCVolumeSource) SwaggerDoc() map[string]string {
 	return map_FCVolumeSource
+}
+
+var map_FileEnvSource = map[string]string{
+	"":         "FileEnvSource selects a file from container filesystem to populate the environment variables with.\n\nThe contents of the target file will represent the key-value pairs as environment variables.",
+	"optional": "Specify whether the file must exist.",
+}
+
+func (FileEnvSource) SwaggerDoc() map[string]string {
+	return map_FileEnvSource
+}
+
+var map_FileKeySelector = map[string]string{
+	"":         "FileKeySelector selects a key of the env file.",
+	"key":      "The key of the env file to select from.  Must be a valid key.",
+	"optional": "Specify whether the file or its key must be defined",
+}
+
+func (FileKeySelector) SwaggerDoc() map[string]string {
+	return map_FileKeySelector
 }
 
 var map_FlexPersistentVolumeSource = map[string]string{

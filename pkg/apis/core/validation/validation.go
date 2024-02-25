@@ -2619,9 +2619,13 @@ func validateEnvVarValueFrom(ev core.EnvVar, fldPath *field.Path, opts PodValida
 		numSources++
 		allErrs = append(allErrs, validateSecretKeySelector(ev.ValueFrom.SecretKeyRef, fldPath.Child("secretKeyRef"))...)
 	}
+	if ev.ValueFrom.FileKeyRef != nil {
+		numSources++
+		allErrs = append(allErrs, validateFileKeySelector(ev.ValueFrom.FileKeyRef, fldPath.Child("fileKeyRef"))...)
+	}
 
 	if numSources == 0 {
-		allErrs = append(allErrs, field.Invalid(fldPath, "", "must specify one of: `fieldRef`, `resourceFieldRef`, `configMapKeyRef` or `secretKeyRef`"))
+		allErrs = append(allErrs, field.Invalid(fldPath, "", "must specify one of: `fieldRef`, `resourceFieldRef`, `configMapKeyRef`, `secretKeyRef` or `fileKeyRef`"))
 	} else if len(ev.Value) != 0 {
 		if numSources != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath, "", "may not be specified when `value` is not empty"))
@@ -2722,9 +2726,13 @@ func ValidateEnvFrom(vars []core.EnvFromSource, fldPath *field.Path) field.Error
 			numSources++
 			allErrs = append(allErrs, validateSecretEnvSource(ev.SecretRef, idxPath.Child("secretRef"))...)
 		}
+		if ev.FileRef != nil {
+			numSources++
+			allErrs = append(allErrs, validateFileEnvSource(ev.FileRef, idxPath.Child("fileRef"))...)
+		}
 
 		if numSources == 0 {
-			allErrs = append(allErrs, field.Invalid(fldPath, "", "must specify one of: `configMapRef` or `secretRef`"))
+			allErrs = append(allErrs, field.Invalid(fldPath, "", "must specify one of: `configMapRef`, `secretRef` or `fileRef`"))
 		} else if numSources > 1 {
 			allErrs = append(allErrs, field.Invalid(fldPath, "", "may not have more than one field specified at a time"))
 		}
@@ -2752,6 +2760,16 @@ func validateSecretEnvSource(secretSource *core.SecretEnvSource, fldPath *field.
 		for _, msg := range ValidateSecretName(secretSource.Name, true) {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), secretSource.Name, msg))
 		}
+	}
+	return allErrs
+}
+
+func validateFileEnvSource(fileSource *core.FileEnvSource, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if len(fileSource.Path) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("path"), ""))
+	} else if !path.IsAbs(fileSource.Path) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("path"), fileSource.Path, "must be an absolute path"))
 	}
 	return allErrs
 }
@@ -2822,6 +2840,25 @@ func validateSecretKeySelector(s *core.SecretKeySelector, fldPath *field.Path) f
 	nameFn := ValidateNameFunc(ValidateSecretName)
 	for _, msg := range nameFn(s.Name, false) {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), s.Name, msg))
+	}
+	if len(s.Key) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("key"), ""))
+	} else {
+		for _, msg := range validation.IsConfigMapKey(s.Key) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("key"), s.Key, msg))
+		}
+	}
+
+	return allErrs
+}
+
+func validateFileKeySelector(s *core.FileKeySelector, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	if len(s.Path) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("path"), ""))
+	} else if !path.IsAbs(s.Path) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("path"), s.Path, "must be an absolute path"))
 	}
 	if len(s.Key) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("key"), ""))
