@@ -242,6 +242,13 @@ const (
 	// that is independent of a Pod.
 	DynamicResourceAllocation featuregate.Feature = "DynamicResourceAllocation"
 
+	// owner: @AnishShah
+	// kep: http://kep.k8s.io/3721
+	// alpha: v1.31
+	//
+	// Capability to populate container environment variables from a file.
+	EnvFiles featuregate.Feature = "EnvFiles"
+
 	// owner: @harche
 	// kep: http://kep.k8s.io/3386
 	// alpha: v1.25
@@ -984,6 +991,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DevicePluginCDIDevices: {Default: true, PreRelease: featuregate.Beta},
 
 	DynamicResourceAllocation: {Default: false, PreRelease: featuregate.Alpha},
+
+	EnvFiles: {Default: false, PreRelease: featuregate.Alpha},
 
 	EventedPLEG: {Default: false, PreRelease: featuregate.Alpha},
 
