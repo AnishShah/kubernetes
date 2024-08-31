@@ -681,6 +681,7 @@ func runEvictionTest(f *framework.Framework, pressureTimeout time.Duration, expe
 					},
 				},
 			})
+			e2epod.NewPodClient(f).DeleteSync(ctx, podName, metav1.DeleteOptions{}, 2*time.Minute)
 
 			if ginkgo.CurrentSpecReport().Failed() {
 				if framework.TestContext.DumpLogsOnFailure {
