@@ -18,6 +18,7 @@ package resource
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"strconv"
 	"strings"
