@@ -72,6 +72,9 @@ func (a *APIServer) Start(ctx context.Context) error {
 	if len(framework.TestContext.RuntimeConfig) > 0 {
 		o.APIEnablement.RuntimeConfig = framework.TestContext.RuntimeConfig
 	}
+	if len(framework.TestContext.AdmissionPlugins) > 0 {
+		o.Admission.GenericAdmission.EnablePlugins = framework.TestContext.AdmissionPlugins
+	}
 	o.SecureServing.BindAddress = netutils.ParseIPSloppy("127.0.0.1")
 	o.ServiceClusterIPRanges = ipnet.String()
 	o.AllowPrivileged = true

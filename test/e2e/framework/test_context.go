@@ -265,6 +265,8 @@ type NodeTestContextType struct {
 	PrepullImages bool
 	// ImageDescription is the description of the image on which the test is running.
 	ImageDescription string
+	// Admission Plugins to be enabled in kube-apiserver.
+	AdmissionPlugins []string
 	// RuntimeConfig is a map of API server runtime configuration values.
 	RuntimeConfig map[string]string
 	// SystemSpecName is the name of the system spec (e.g., gke) that's used in

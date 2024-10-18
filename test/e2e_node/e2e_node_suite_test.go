@@ -112,6 +112,7 @@ func registerNodeFlags(flags *flag.FlagSet) {
 	flags.Var(cliflag.NewMapStringBool(&serviceFeatureGates), "service-feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features for API service.")
 	flags.BoolVar(&framework.TestContext.StandaloneMode, "standalone-mode", false, "If true, starts kubelet in standalone mode.")
 	flags.BoolVar(&framework.TestContext.CriProxyEnabled, "cri-proxy-enabled", false, "If true, enable CRI API proxy for failure injection.")
+	flags.StringSliceVar(cliflag.NewStringSlice(&framework.TestContext.AdmissionPlugins), "admission-plugins", "A slice of admission plugin names to be enabled in apiserver.")
 }
 
 func init() {
