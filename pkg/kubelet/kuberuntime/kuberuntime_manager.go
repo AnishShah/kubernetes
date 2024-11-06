@@ -473,7 +473,7 @@ type containerResources struct {
 
 // containerToUpdateInfo contains necessary information to update a container's resources.
 type containerToUpdateInfo struct {
-	// Index of the container in pod.Spec.Containers that needs resource update
+	// Index of the container in pod.Spec.Containers or pod.Spec.InitContainers that needs resource update
 	apiContainerIdx int
 	// ID of the runtime container that needs resource update
 	kubeContainerID kubecontainer.ContainerID
@@ -514,6 +514,9 @@ type podActions struct {
 	// EphemeralContainersToStart is a list of indexes for the ephemeral containers to start,
 	// where the index is the index of the specific container in pod.Spec.EphemeralContainers.
 	EphemeralContainersToStart []int
+	// InitContainersToUpdate keeps a list of restartable init containers (sidecar containers) needing resource update.
+	// Init Containers resource update is applicable only for CPU and memory.
+	InitContainersToUpdate map[v1.ResourceName][]containerToUpdateInfo
 	// ContainersToUpdate keeps a list of containers needing resource update.
 	// Container resource update is applicable only for CPU and memory.
 	ContainersToUpdate map[v1.ResourceName][]containerToUpdateInfo
@@ -522,8 +525,8 @@ type podActions struct {
 }
 
 func (p podActions) String() string {
-	return fmt.Sprintf("KillPod: %t, CreateSandbox: %t, UpdatePodResources: %t, Attempt: %d, InitContainersToStart: %v, ContainersToStart: %v, EphemeralContainersToStart: %v,ContainersToUpdate: %v, ContainersToKill: %v",
-		p.KillPod, p.CreateSandbox, p.UpdatePodResources, p.Attempt, p.InitContainersToStart, p.ContainersToStart, p.EphemeralContainersToStart, p.ContainersToUpdate, p.ContainersToKill)
+	return fmt.Sprintf("KillPod: %t, CreateSandbox: %t, UpdatePodResources: %t, Attempt: %d, InitContainersToStart: %v, ContainersToStart: %v, EphemeralContainersToStart: %v,InitContainersToUpdate: %v, ContainersToUpdate: %v, ContainersToKill: %v",
+		p.KillPod, p.CreateSandbox, p.UpdatePodResources, p.Attempt, p.InitContainersToStart, p.ContainersToStart, p.EphemeralContainersToStart, p.InitContainersToUpdate, p.ContainersToUpdate, p.ContainersToKill)
 }
 
 // containerChanged will determine whether the container has changed based on the fields that will affect the running of the container.
@@ -560,8 +563,15 @@ func IsInPlacePodVerticalScalingAllowed(pod *v1.Pod) bool {
 
 // computePodResizeAction determines the actions required (if any) to resize the given container.
 // Returns whether to keep (true) or restart (false) the container.
-func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containerIdx int, kubeContainerStatus *kubecontainer.Status, changes *podActions) (keepContainer bool) {
-	container := pod.Spec.Containers[containerIdx]
+// TODO(vibansal): Make this function to be agnostic to whether it is dealing with a restartable init container or not (i.e. remove the argument `isRestartableInitContainer`).
+func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containerIdx int, isRestartableInitContainer bool, kubeContainerStatus *kubecontainer.Status, changes *podActions) (keepContainer bool) {
+	var container v1.Container
+
+	if isRestartableInitContainer {
+		container = pod.Spec.InitContainers[containerIdx]
+	} else {
+		container = pod.Spec.Containers[containerIdx]
+	}
 
 	// Determine if the *running* container needs resource update by comparing v1.Spec.Resources (desired)
 	// with v1.Status.Resources / runtime.Status.Resources (last known actual).
@@ -631,13 +641,17 @@ func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containe
 			currentContainerResources: &currentResources,
 		}
 		// Order the container updates such that resource decreases are applied before increases
+		containersToUpdate := changes.ContainersToUpdate
+		if isRestartableInitContainer {
+			containersToUpdate = changes.InitContainersToUpdate
+		}
 		switch {
 		case specValue > statusValue: // append
-			changes.ContainersToUpdate[rName] = append(changes.ContainersToUpdate[rName], cUpdateInfo)
+			containersToUpdate[rName] = append(containersToUpdate[rName], cUpdateInfo)
 		case specValue < statusValue: // prepend
-			changes.ContainersToUpdate[rName] = append(changes.ContainersToUpdate[rName], containerToUpdateInfo{})
-			copy(changes.ContainersToUpdate[rName][1:], changes.ContainersToUpdate[rName])
-			changes.ContainersToUpdate[rName][0] = cUpdateInfo
+			containersToUpdate[rName] = append(containersToUpdate[rName], containerToUpdateInfo{})
+			copy(containersToUpdate[rName][1:], containersToUpdate[rName])
+			containersToUpdate[rName][0] = cUpdateInfo
 		}
 	}
 	resizeMemLim, restartMemLim := determineContainerResize(v1.ResourceMemory, desiredResources.memoryLimit, currentResources.memoryLimit)
@@ -647,10 +661,14 @@ func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containe
 		// resize policy requires this container to restart
 		changes.ContainersToKill[kubeContainerStatus.ID] = containerToKillInfo{
 			name:      kubeContainerStatus.Name,
-			container: &pod.Spec.Containers[containerIdx],
+			container: &container,
 			message:   fmt.Sprintf("Container %s resize requires restart", container.Name),
 		}
-		changes.ContainersToStart = append(changes.ContainersToStart, containerIdx)
+		if isRestartableInitContainer {
+			changes.InitContainersToStart = append(changes.InitContainersToStart, containerIdx)
+		} else {
+			changes.ContainersToStart = append(changes.ContainersToStart, containerIdx)
+		}
 		changes.UpdatePodResources = true
 		return false
 	} else {
@@ -711,7 +729,7 @@ func (m *kubeGenericRuntimeManager) doPodResizeAction(ctx context.Context, pod *
 			}
 		}
 		if len(podContainerChanges.ContainersToUpdate[rName]) > 0 {
-			updateContainerResults, errUpdate := m.updatePodContainerResources(ctx, pod, rName, podContainerChanges.ContainersToUpdate[rName])
+			updateContainerResults, errUpdate := m.updatePodContainerResources(ctx, pod, rName, podContainerChanges.ContainersToUpdate[rName], false)
 			for _, containerResult := range updateContainerResults {
 				result.AddSyncResult(containerResult)
 			}
@@ -719,6 +737,13 @@ func (m *kubeGenericRuntimeManager) doPodResizeAction(ctx context.Context, pod *
 				return errUpdate
 			}
 		}
+		if len(podContainerChanges.InitContainersToUpdate[rName]) > 0 {
+			if err = m.updatePodContainersResources(pod, rName, podContainerChanges.InitContainersToUpdate[rName], true); err != nil {
+				klog.ErrorS(err, "updatePodContainersResources failed for init containers", "pod", format.Pod(pod), "resource", rName)
+				return err
+			}
+		}
+
 		// At downsizing, requests should shrink prior to limits in order to keep "requests <= limits".
 		if newPodCgReqValue < currPodCgReqValue {
 			if err = setPodCgroupConfig(rName, false); err != nil {
@@ -732,7 +757,7 @@ func (m *kubeGenericRuntimeManager) doPodResizeAction(ctx context.Context, pod *
 		}
 		return err
 	}
-	if len(podContainerChanges.ContainersToUpdate[v1.ResourceMemory]) > 0 || podContainerChanges.UpdatePodResources {
+	if len(podContainerChanges.ContainersToUpdate[v1.ResourceMemory]) > 0 || len(podContainerChanges.InitContainersToUpdate[v1.ResourceMemory]) > 0 || podContainerChanges.UpdatePodResources {
 		if podResources.Memory == nil {
 			result.Fail(fmt.Errorf("podResources.Memory is nil for pod %s", format.Pod(pod)))
 			return
@@ -756,7 +781,7 @@ func (m *kubeGenericRuntimeManager) doPodResizeAction(ctx context.Context, pod *
 			return
 		}
 	}
-	if len(podContainerChanges.ContainersToUpdate[v1.ResourceCPU]) > 0 || podContainerChanges.UpdatePodResources {
+	if len(podContainerChanges.ContainersToUpdate[v1.ResourceCPU]) > 0 || len(podContainerChanges.InitContainersToUpdate[v1.ResourceCPU]) > 0 || podContainerChanges.UpdatePodResources {
 		if podResources.CPUQuota == nil || podResources.CPUShares == nil {
 			result.Fail(fmt.Errorf("podResources.CPUQuota or podResources.CPUShares is nil for pod %s", format.Pod(pod)))
 			return
@@ -775,12 +800,17 @@ func (m *kubeGenericRuntimeManager) doPodResizeAction(ctx context.Context, pod *
 	return
 }
 
-func (m *kubeGenericRuntimeManager) updatePodContainerResources(ctx context.Context, pod *v1.Pod, resourceName v1.ResourceName, containersToUpdate []containerToUpdateInfo) (updateResults []*kubecontainer.SyncResult, err error) {
+func (m *kubeGenericRuntimeManager) updatePodContainerResources(ctx context.Context, pod *v1.Pod, resourceName v1.ResourceName, containersToUpdate []containerToUpdateInfo, isRestartableInitContainer bool) (updateResults []*kubecontainer.SyncResult, err error) {
 	klog.V(5).InfoS("Updating container resources", "pod", klog.KObj(pod))
+	var container *v1.Container
 
 	for _, cInfo := range containersToUpdate {
 		var updateContainerResult *kubecontainer.SyncResult
-		container := pod.Spec.Containers[cInfo.apiContainerIdx].DeepCopy()
+		if isRestartableInitContainer {
+			container = pod.Spec.InitContainers[cInfo.apiContainerIdx].DeepCopy()
+		} else {
+			container = pod.Spec.Containers[cInfo.apiContainerIdx].DeepCopy()
+		}
 		// If updating memory limit, use most recently configured CPU request and limit values.
 		// If updating CPU request and limit, use most recently configured memory request and limit values.
 		switch resourceName {
@@ -972,6 +1002,9 @@ func (m *kubeGenericRuntimeManager) computePodActions(ctx context.Context, pod *
 			return changes
 		}
 	} else {
+		if IsInPlacePodVerticalScalingAllowed(pod) {
+			changes.InitContainersToUpdate = make(map[v1.ResourceName][]containerToUpdateInfo)
+		}
 		hasInitialized := m.computeInitContainerActions(pod, podStatus, &changes)
 		if changes.KillPod || !hasInitialized {
 			// Initialization failed or still in progress. Skip inspecting non-init
@@ -1038,7 +1071,7 @@ func (m *kubeGenericRuntimeManager) computePodActions(ctx context.Context, pod *
 			// If the container failed the startup probe, we should kill it.
 			message = fmt.Sprintf("Container %s failed startup probe", container.Name)
 			reason = reasonStartupProbe
-		} else if IsInPlacePodVerticalScalingAllowed(pod) && !m.computePodResizeAction(pod, idx, containerStatus, &changes) {
+		} else if IsInPlacePodVerticalScalingAllowed(pod) && !m.computePodResizeAction(pod, idx, false, containerStatus, &changes) {
 			// computePodResizeAction updates 'changes' if resize policy requires restarting this container
 			continue
 		} else {
@@ -1354,9 +1387,10 @@ func (m *kubeGenericRuntimeManager) SyncPod(ctx context.Context, pod *v1.Pod, po
 		}
 	}
 
-	// Step 7: For containers in podContainerChanges.ContainersToUpdate[CPU,Memory] list, invoke UpdateContainerResources
+	// Step 7: For containers in podContainerChanges.ContainersToUpdate[CPU,Memory] or podContainerChanges.InitContainersToUpdate[CPU,Memory] lists, invoke UpdateContainerResources
 	if IsInPlacePodVerticalScalingAllowed(pod) {
-		if len(podContainerChanges.ContainersToUpdate) > 0 || podContainerChanges.UpdatePodResources {
+		updateInitContainers := utilfeature.DefaultFeatureGate.Enabled(features.SidecarContainers) && len(podContainerChanges.InitContainersToUpdate) > 0
+		if len(podContainerChanges.ContainersToUpdate) > 0 || updateInitContainers || podContainerChanges.UpdatePodResources {
 			resizeResult := m.doPodResizeAction(ctx, pod, podStatus, podContainerChanges)
 			result.AddPodSyncResult(resizeResult)
 			if resizeResult.Error() != nil {

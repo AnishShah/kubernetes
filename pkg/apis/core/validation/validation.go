@@ -3542,10 +3542,6 @@ func validateInitContainers(containers []core.Container, regularContainers []cor
 				allErrs = append(allErrs, field.Forbidden(idxPath.Child("startupProbe"), "may not be set for init containers without restartPolicy=Always"))
 			}
 		}
-
-		if len(ctr.ResizePolicy) > 0 {
-			allErrs = append(allErrs, field.Invalid(idxPath.Child("resizePolicy"), ctr.ResizePolicy, "must not be set for init containers"))
-		}
 	}
 
 	return allErrs
@@ -5270,6 +5266,7 @@ func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) fiel
 	for ix, container := range mungedPodSpec.Containers {
 		container.Image = oldPod.Spec.Containers[ix].Image // +k8s:verify-mutation:reason=clone
 		newContainers = append(newContainers, container)
+
 	}
 	mungedPodSpec.Containers = newContainers
 	// munge spec.initContainers[*].image
