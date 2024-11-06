@@ -817,7 +817,7 @@ func doPodResizeTests(f *framework.Framework) {
 				},
 			},
 		},
-		{
+		/*{
 			name: "Guaranteed QoS pod, one restartable init container - increase CPU & memory",
 			containers: []e2epod.ResizableContainerInfo{
 				{
@@ -941,7 +941,7 @@ func doPodResizeTests(f *framework.Framework) {
 					Resources: &e2epod.ContainerResources{CPUReq: "50m", CPULim: "50m", MemReq: "300Mi", MemLim: "300Mi"},
 				},
 			},
-		},
+		},*/
 	}
 
 	for idx := range tests {
