@@ -18,9 +18,9 @@ package install
 
 import (
 	v1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/util/feature"
-	resourcehelper "k8s.io/kubernetes/pkg/api/v1/resource"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/quota/v1/evaluator/core"
 	"k8s.io/utils/clock"
@@ -33,8 +33,8 @@ func DefaultUpdateFilter() func(resource schema.GroupVersionResource, oldObj, ne
 		case schema.GroupResource{Resource: "pods"}:
 			oldPod := oldObj.(*v1.Pod)
 			newPod := newObj.(*v1.Pod)
-			// when AllocatedResources changed
-			if feature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && hasAllocatedResourcesChanged(oldPod, newPod) {
+			// handle pod resource changes.
+			if feature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && hasPodResourcesChanged(oldPod, newPod) {
 				return true
 			}
 			return core.QuotaV1Pod(oldPod, clock.RealClock{}) && !core.QuotaV1Pod(newPod, clock.RealClock{})
@@ -52,14 +52,14 @@ func DefaultUpdateFilter() func(resource schema.GroupVersionResource, oldObj, ne
 	}
 }
 
-// hasAllocatedResourcesChanged function to compare allocated resources in container statuses
-func hasAllocatedResourcesChanged(oldPod *v1.Pod, newPod *v1.Pod) bool {
+// hasPodResourcesChanged function to compare allocated resources in container statuses
+func hasPodResourcesChanged(oldPod *v1.Pod, newPod *v1.Pod) bool {
 	if len(oldPod.Status.ContainerStatuses) != len(newPod.Status.ContainerStatuses) {
 		return false
 	}
 	for i, oldStatus := range oldPod.Status.ContainerStatuses {
 		newStatus := newPod.Status.ContainerStatuses[i]
-		if !resourcehelper.EqualResourceList(oldStatus.AllocatedResources, newStatus.AllocatedResources) {
+		if !apiequality.Semantic.DeepEqual(oldStatus.Resources, newStatus.Resources) {
 			return true
 		}
 	}
