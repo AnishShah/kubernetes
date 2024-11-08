@@ -1780,6 +1780,7 @@ func allocatedResourcesMatchStatus(allocatedPod *v1.Pod, podStatus *kubecontaine
 	return true
 }
 
+// allocatedContainerResourcesMatchStatus returns true if the container resources matches with the container statuses resources.
 func allocatedContainerResourcesMatchStatus(allocatedPod *v1.Pod, c *v1.Container, podStatus *kubecontainer.PodStatus) bool {
 	if cs := podStatus.FindContainerStatusByName(c.Name); cs != nil {
 		if cs.State != kubecontainer.ContainerStateRunning {
@@ -1804,27 +1805,25 @@ func allocatedContainerResourcesMatchStatus(allocatedPod *v1.Pod, c *v1.Containe
 			}
 		}
 
-			// Only compare resizeable resources, and only compare resources that are explicitly configured.
-			if hasCPUReq {
-				// If both allocated & status CPU requests are at or below MinShares then they are considered equal.
-				if !cpuReq.Equal(*cs.Resources.CPURequest) &&
-					(cpuReq.MilliValue() > cm.MinShares || cs.Resources.CPURequest.MilliValue() > cm.MinShares) {
-					return false
-				}
+		// Only compare resizeable resources, and only compare resources that are explicitly configured.
+		if hasCPUReq {
+			// If both allocated & status CPU requests are at or below MinShares then they are considered equal.
+			if !cpuReq.Equal(*cs.Resources.CPURequest) &&
+				(cpuReq.MilliValue() > cm.MinShares || cs.Resources.CPURequest.MilliValue() > cm.MinShares) {
+				return false
 			}
-			if hasCPULim {
-				if !cpuLim.Equal(*cs.Resources.CPULimit) {
-					return false
-				}
+		}
+		if hasCPULim {
+			if !cpuLim.Equal(*cs.Resources.CPULimit) {
+				return false
 			}
-			if hasMemLim {
-				if !memLim.Equal(*cs.Resources.MemoryLimit) {
-					return false
-				}
+		}
+		if hasMemLim {
+			if !memLim.Equal(*cs.Resources.MemoryLimit) {
+				return false
 			}
 		}
 	}
-
 	return true
 }
 
