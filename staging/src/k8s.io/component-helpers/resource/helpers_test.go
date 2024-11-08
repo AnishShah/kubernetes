@@ -429,7 +429,7 @@ func TestPodResourceRequests(t *testing.T) {
 			},
 		},
 		{
-			description: "resized without sidecar containers, infeasible",
+			description: "resized, infeasible",
 			expectedRequests: v1.ResourceList{
 				v1.ResourceCPU: resource.MustParse("2"),
 			},
@@ -457,7 +457,7 @@ func TestPodResourceRequests(t *testing.T) {
 			},
 		},
 		{
-			description: "resized with no sidecar containers, no resize status",
+			description: "resized, no resize status",
 			expectedRequests: v1.ResourceList{
 				v1.ResourceCPU: resource.MustParse("4"),
 			},

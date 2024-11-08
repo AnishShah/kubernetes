@@ -2241,7 +2241,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					ContainersToUpdate: map[v1.ResourceName][]containerToUpdateInfo{
 						v1.ResourceMemory: {
 							{
-								apiContainerIdx: 1,
+								container:       &pod.Spec.Containers[1],
 								kubeContainerID: kcs.ID,
 								desiredContainerResources: containerResources{
 									memoryLimit: mem100M.Value(),
@@ -2255,7 +2255,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 						},
 						v1.ResourceCPU: {
 							{
-								apiContainerIdx: 1,
+								container:       &pod.Spec.Containers[1],
 								kubeContainerID: kcs.ID,
 								desiredContainerResources: containerResources{
 									memoryLimit: mem100M.Value(),
@@ -2294,7 +2294,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					ContainersToUpdate: map[v1.ResourceName][]containerToUpdateInfo{
 						v1.ResourceCPU: {
 							{
-								apiContainerIdx: 1,
+								container:       &pod.Spec.Containers[1],
 								kubeContainerID: kcs.ID,
 								desiredContainerResources: containerResources{
 									memoryLimit: mem100M.Value(),
@@ -2333,7 +2333,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					ContainersToUpdate: map[v1.ResourceName][]containerToUpdateInfo{
 						v1.ResourceMemory: {
 							{
-								apiContainerIdx: 2,
+								container:       &pod.Spec.Containers[2],
 								kubeContainerID: kcs.ID,
 								desiredContainerResources: containerResources{
 									memoryLimit: mem200M.Value(),
@@ -2499,7 +2499,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					ContainersToUpdate: map[v1.ResourceName][]containerToUpdateInfo{
 						v1.ResourceMemory: {
 							{
-								apiContainerIdx: 1,
+								container:       &pod.Spec.Containers[1],
 								kubeContainerID: kcs.ID,
 								desiredContainerResources: containerResources{
 									memoryLimit: mem200M.Value(),
@@ -2539,7 +2539,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					ContainersToUpdate: map[v1.ResourceName][]containerToUpdateInfo{
 						v1.ResourceCPU: {
 							{
-								apiContainerIdx: 2,
+								container:       &pod.Spec.Containers[2],
 								kubeContainerID: kcs.ID,
 								desiredContainerResources: containerResources{
 									memoryLimit: mem100M.Value(),
@@ -2731,7 +2731,7 @@ func TestUpdatePodContainerResources(t *testing.T) {
 			// default resize policy when pod resize feature is enabled
 			pod.Spec.InitContainers[idx].Resources = tc.apiSpecResources[idx]
 			cInfo := containerToUpdateInfo{
-				apiContainerIdx: idx,
+				container:       &pod.Spec.Containers[idx],
 				kubeContainerID: kubecontainer.ContainerID{},
 				desiredContainerResources: containerResources{
 					memoryLimit:   tc.apiSpecResources[idx].Limits.Memory().Value(),
@@ -2752,7 +2752,7 @@ func TestUpdatePodContainerResources(t *testing.T) {
 		if tc.injectedError != nil {
 			fakeRuntime.InjectError("UpdateContainerResources", tc.injectedError)
 		}
-		updateContainerResults, err := m.updatePodContainerResources(context.TODO(), pod, tc.resourceName, containersToUpdate, false)
+		updateContainerResults, err := m.updatePodContainerResources(context.TODO(), pod, tc.resourceName, containersToUpdate)
 		assert.ElementsMatch(t, tc.expectedResults, updateContainerResults)
 		if tc.injectedError == nil {
 			require.NoError(t, err, dsc)
@@ -2889,7 +2889,7 @@ func TestUpdatePodRestartableInitContainerResources(t *testing.T) {
 			pod.Spec.InitContainers[idx].Resources = tc.apiSpecResources[idx]
 			pod.Status.ContainerStatuses[idx].Resources = &tc.apiStatusResources[idx]
 			cInfo := containerToUpdateInfo{
-				apiContainerIdx: idx,
+				container:       &pod.Spec.InitContainers[idx],
 				kubeContainerID: kubecontainer.ContainerID{},
 				desiredContainerResources: containerResources{
 					memoryLimit:   tc.apiSpecResources[idx].Limits.Memory().Value(),
@@ -2908,7 +2908,7 @@ func TestUpdatePodRestartableInitContainerResources(t *testing.T) {
 		}
 		fakeRuntime.Called = []string{}
 
-		updateContainerResults, err := m.updatePodContainerResources(context.TODO(), pod, tc.resourceName, initContainersToUpdate, true)
+		updateContainerResults, err := m.updatePodContainerResources(context.TODO(), pod, tc.resourceName, initContainersToUpdate)
 		assert.ElementsMatch(t, tc.expectedResults, updateContainerResults)
 		if tc.injectedError == nil {
 			require.NoError(t, err, dsc)
@@ -3053,5 +3053,113 @@ func TestGetImageVolumes(t *testing.T) {
 			require.NoError(t, err, desc)
 		}
 		assert.Equal(t, tc.expectedImageVolumePulls, imageVolumePulls)
+	}
+}
+
+// This test focuses on verifying `doPodResizeAction()` propagates an error correctly with a few error cases.
+// TODO: For increase test coverages, more work like introduing mock framework is necessary in order to emulate errors.
+func TestDoPodResizeAction(t *testing.T) {
+	if goruntime.GOOS != "linux" {
+		t.Skip("unsupported OS")
+	}
+
+	cpu100m := resource.MustParse("100m")
+	cpu200m := resource.MustParse("200m")
+	mem100M := resource.MustParse("100Mi")
+	mem200M := resource.MustParse("200Mi")
+
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.InPlacePodVerticalScaling, true)
+	_, _, m, err := createTestRuntimeManager()
+	require.NoError(t, err)
+	m.cpuCFSQuota = true // Enforce CPU Limits
+	m.containerManager = cm.NewStubContainerManager()
+
+	for _, tc := range []struct {
+		testName         string
+		currentResources v1.ResourceRequirements
+		qosClass         v1.PodQOSClass
+		desiredResources v1.ResourceRequirements
+		expectedError    string
+	}{
+		{
+			testName: "Increase cpu and memory",
+			currentResources: v1.ResourceRequirements{
+				Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				Limits:   v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+			},
+			desiredResources: v1.ResourceRequirements{
+				Requests: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
+				Limits:   v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
+			},
+			qosClass:      v1.PodQOSGuaranteed,
+			expectedError: "not implemented", // containerManagerStub doesn't implement GetPodCgroupConfig() or SetPodCgroupConfig().
+		},
+		{
+			testName: "memory is nil error",
+			currentResources: v1.ResourceRequirements{
+				Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+			},
+			desiredResources: v1.ResourceRequirements{
+				Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem200M},
+			},
+			qosClass:      v1.PodQOSBurstable,
+			expectedError: "podResources.Memory is nil for pod",
+		},
+		{
+			testName: "cpu is nil error",
+			currentResources: v1.ResourceRequirements{
+				Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+			},
+			desiredResources: v1.ResourceRequirements{
+				Requests: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem100M},
+			},
+			qosClass:      v1.PodQOSBurstable,
+			expectedError: "podResources.CPUQuota or podResources.CPUShares is nil for pod",
+		},
+	} {
+		t.Run(tc.testName, func(t *testing.T) {
+			pod, kps := makeBasePodAndStatus()
+			// pod spec and allocated resources are already updated as desired when doPodResizeAction() is called.
+			pod.Spec.Containers[0].Resources = tc.desiredResources
+			pod.Status.ContainerStatuses[0].AllocatedResources = tc.desiredResources.Requests
+			pod.Status.QOSClass = tc.qosClass
+			kcs := kps.FindContainerStatusByName(pod.Spec.Containers[0].Name)
+
+			cpuReqResized := !tc.currentResources.Requests.Cpu().Equal(*tc.desiredResources.Requests.Cpu())
+			cpuLimReiszed := !tc.currentResources.Limits.Cpu().Equal(*tc.desiredResources.Limits.Cpu())
+			memReqResized := !tc.currentResources.Requests.Memory().Equal(*tc.desiredResources.Requests.Memory())
+			memLimResized := !tc.currentResources.Limits.Memory().Equal(*tc.desiredResources.Limits.Memory())
+
+			updateInfo := containerToUpdateInfo{
+				container:       &pod.Spec.Containers[0],
+				kubeContainerID: kcs.ID,
+				desiredContainerResources: containerResources{
+					cpuRequest:    tc.desiredResources.Requests.Cpu().MilliValue(),
+					cpuLimit:      tc.desiredResources.Limits.Cpu().MilliValue(),
+					memoryRequest: tc.desiredResources.Requests.Memory().Value(),
+					memoryLimit:   tc.desiredResources.Limits.Memory().Value(),
+				},
+				currentContainerResources: &containerResources{
+					cpuRequest:    tc.currentResources.Requests.Cpu().MilliValue(),
+					cpuLimit:      tc.currentResources.Limits.Cpu().MilliValue(),
+					memoryRequest: tc.currentResources.Requests.Memory().Value(),
+					memoryLimit:   tc.currentResources.Limits.Memory().Value(),
+				},
+			}
+			containersToUpdate := make(map[v1.ResourceName][]containerToUpdateInfo)
+			if cpuReqResized || cpuLimReiszed {
+				containersToUpdate[v1.ResourceCPU] = []containerToUpdateInfo{updateInfo}
+			}
+			if memReqResized || memLimResized {
+				containersToUpdate[v1.ResourceMemory] = []containerToUpdateInfo{updateInfo}
+			}
+
+			syncResult := m.doPodResizeAction(context.TODO(), pod, kps,
+				podActions{
+					ContainersToUpdate: containersToUpdate,
+				})
+
+			assert.ErrorContains(t, syncResult.Error(), tc.expectedError)
+		})
 	}
 }
